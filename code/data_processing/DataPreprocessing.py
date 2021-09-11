@@ -1,84 +1,88 @@
 # """
 #
-# File: Reports to Logs
+# File: Data Preprocessing
 #
-# Summary: In this file we process the raw report from admissions department and wrangle the data in order to
-#             separate each converation into separate dialogues to form a log.
+# Summary: In this file we preprocess the data: standardize casing, lemmatization, tokenization
 #
-# Input: Raw report as received from the admissions department where each whole conversation is a row.
+# Input: Log formatted file with raw conversations
 #
-# Output: Log formatted CSV file for each of the departments contained in the reports.
+# Output: Log formatted file but with preprocessed data
 #
 # """
 
-# Libraries
-import datetime  # Manejo de datetimes
-import io  # Lectura y escritura de archivos
-import pandas as pd  # Pandas para manejo de las dataframes
-import numpy as np  # Numpy
+# Core Libraries
+from itertools import islice
 import numexpr as ne
-import string  # Manipulacion de strings
+import numpy as np 
+import pandas as pd  
+import string  
+import time
+from tqdm import tqdm  # Progress bar
 import unicodedata
 
 # ------------------
-import spacy  # Procesos de NLP
+# NLP Related Libraries
+import re  
+import spacy  
 from spacy.language import Language
 import stanza
-import re  # Regular expressions
-from sklearn.feature_extraction.text import CountVectorizer  # Document Term Matrix
-from itertools import islice
 from symspellpy import SymSpell, Verbosity, editdistance
-import time
-
-# ------------------
-from tqdm import tqdm  # Progress bar
 
 ne.set_vml_num_threads(8)
 
 # Pandas options to display whole information of dataframes
-pd.set_option(
-    "display.max_rows", None
-)  # Default value of display.max_rows is 10 i.e. at max 10 rows will be printed. Set it None to display all rows in the dataframe
-pd.set_option(
-    "display.max_columns", None
-)  # Set it to None to display all columns in the dataframe
-pd.set_option("display.width", None)
-pd.set_option("display.max_colwidth", None)
+# pd.set_option(
+#     "display.max_rows", None
+# )  # Default value of display.max_rows is 10 i.e. at max 10 rows will be printed. Set it None to display all rows in the dataframe
+# pd.set_option(
+#     "display.max_columns", None
+# )  # Set it to None to display all columns in the dataframe
+# pd.set_option("display.width", None)
+# pd.set_option("display.max_colwidth", None)
 
 
 def HacerPreproceso(
     Departamento="TODOS",
-    Emisor="AGENTE",
-    Filtro=True,
-    Juntar=False,
-    SegundosDelta=0,
+    Emisor="AGENTE", 
+    Filtro=True, 
+    Juntar=False, 
+    SegundosDelta=0, 
     NLP=None,
     stanzaNLP=None,
     AutoCorrect=False,
     sym_spell=None,
     use_stanza=True,
 ):
-    """[summary]
+    """This function controls the core sequence of events to preprocess data. Modifiable options are Departamento, Emisor, Filtro, Juntar, SegundosDelta
 
     Args:
-        Departamento (str, optional): [description]. Defaults to "TODOS".
-        Emisor (str, optional): [description]. Defaults to "AGENTE".
-        Filtro (bool, optional): [description]. Defaults to True.
-        SegundosDelta (int, optional): [description]. Defaults to 0.
+        Departamento (str): Filters the conversations by department. Options: TODOS, Admision_Preparatoria, Admision_Profesional, SOAE, SOAD.
+        Emisor (str): Options: AGENTE, PROSPECTO, TECBOT.
+        Filtro (bool): If True, filters the dataset given Emisor.
+        Juntar (bool): Works along with SegundosDelta where if there are multiple lines from a single Emisor, those multi-lines are merged withing SegundosDelta time frame.
+        SegundosDelta (int): Time frame to merge multi-lines.
+        NLP (object): spacy language model. Is None the first iteration, then it's initialized on further processes.
+        stanzaNLP (object): stanza language model. Is None the first iteration, then it's initialized on further processes.
+        AutoCorrect (bool): sets if autocorrection process is going to be done. This produces inconsistent data, needs more work.
+        sym_spell (bool): Is None the first iteration, then it's initialized on further processes.
+        use_stanza (bool): Indicates that stanza will be used on lemmatization. STANZA LEMMATIZATION IS MORE COMPLETE ON FOR THIS FILE.
 
     Returns:
-        [type]: [description]
+        DF, NLP, stanzaNLP, sym_spell: DF being the complete and preprocessed data. The rest are for reusability during the process.
     """
 
+    # If autocorrect is set to true, we have 7 sub-processes, else 6. For ProgressBar.
     if AutoCorrect == True:
         total = 7
     else:
         total = 6
 
+    # ProgressBar initialization
     with tqdm(
         total=total, bar_format="{bar}|{desc}{percentage:3.0f}% {r_bar}", leave=False
     ) as pbar:
 
+        # 1) Read Logs
         pbar.set_description(f"Leyendo Logs...")
         DF = LeerLogs(Departamento, Juntar, SegundosDelta)
         time.sleep(1)
@@ -86,6 +90,7 @@ def HacerPreproceso(
         time.sleep(1)
         pbar.update(1)
 
+        # 2) Filter Logs
         pbar.set_description(f"Filtrando Logs...")
         DF = FiltrarEmisor(DF, Emisor, Filtro)
         time.sleep(1)
@@ -93,6 +98,7 @@ def HacerPreproceso(
         time.sleep(1)
         pbar.update(1)
 
+        # 3) Read Names Dataset
         pbar.set_description(f"Leyendo Nombres...")
         NombresNPArray = LeerNombres()
         time.sleep(1)
@@ -100,7 +106,9 @@ def HacerPreproceso(
         time.sleep(1)
         pbar.update(1)
 
+        # Loads if Language Models are not loaded
         if NLP == None:
+            # 4.1) Initialize Spacy/Stanza
             pbar.set_description(f"Inicializando Spacy...")
             NLP, stanzaNLP = CargarSpacy(use_stanza)
             time.sleep(1)
@@ -108,13 +116,17 @@ def HacerPreproceso(
             time.sleep(1)
             pbar.update(1)
         else:
+            # 4.2) Language model is already initialized
             time.sleep(1)
             pbar.write(f"Done: Spacy ya se encuentra inicializado.")
             time.sleep(1)
             pbar.update(1)
 
+        # Check if autocorrection is going to be done
         if AutoCorrect == True:
+            # If autocorrect object is not initialized
             if sym_spell == None:
+                # 5) Initialize Dictionary
                 pbar.set_description(f"Inicializando Diccionario...")
                 sym_spell = CargaSymSpell()
                 time.sleep(1)
@@ -122,6 +134,7 @@ def HacerPreproceso(
                 time.sleep(1)
                 pbar.update(1)
 
+        # 5|6) Lemmatize
         pbar.set_description(f"Lematizando...")
         DF = TokenizaYLematiza(
             DF, NombresNPArray, NLP, stanzaNLP, AutoCorrect, sym_spell
@@ -131,6 +144,7 @@ def HacerPreproceso(
         time.sleep(1)
         pbar.update(1)
 
+        # Column is normalized
         DF["OracionLematizada"] = (
             DF["OracionLematizada"]
             .str.normalize("NFKD")
@@ -138,7 +152,9 @@ def HacerPreproceso(
             .str.decode("utf-8")
         )
 
+        # 6|7) Write Files
         pbar.set_description(f"Escribiendo Logs Preprocesados...")
+        # Checks if conversations are merged to indicate in filename
         if Juntar == True:
             DF.to_csv(
                 "../data/processed/internal/admisiones/chat_reports/clean_logs/logs_"
@@ -157,7 +173,6 @@ def HacerPreproceso(
                 encoding="utf-8",
                 index=False,
             )
-
         time.sleep(1)
         pbar.write(f"Done: Escribiendo Logs Preprocesados.")
         time.sleep(1)
@@ -167,17 +182,17 @@ def HacerPreproceso(
 
 
 def LeerLogs(Departamento, Juntar, SegundosDelta):
-    """[summary]
+    """Reads file that
 
     Args:
-        Departamento ([type]): [description]
-        SegundosDelta ([type]): [description]
+        Departamento (str): For filename reading. Options: TODOS, Admision_Preparatoria, Admision_Profesional, SOAE, SOAD
+        SegundosDelta (int): Time frame to merge multi-lines.
 
     Returns:
-        [type]: [description]
+        DF: Dataset from conversations.
     """
 
-    # departamento = 'TODOS' # TODOS, Admision_Preparatoria, Admision_Profesional, SOAE, SOAD
+    # Checks if file to be read contains a format following merged multi-lines or not.
     if Juntar == True:
         DF = pd.read_csv(
             f"../data/processed/internal/admisiones/chat_reports/logs/logs_{str(Departamento).capitalize()}_sec_{SegundosDelta}.csv",
@@ -196,15 +211,14 @@ def LeerLogs(Departamento, Juntar, SegundosDelta):
 
 
 def FiltrarEmisor(DF, Emisor, Filtro):
-    """[summary]
+    """Filter the dataset by Emisor.
 
     Args:
-        DF ([type]): [description]
-        Emisor ([type]): [description]
-        Filtro ([type]): [description]
-
+        DF (dataset): Dataset from conversations.
+        Emisor (str): Options: AGENTE, PROSPECTO, TECBOT.
+        Filtro (bool): Describes if dataset will be filtered.
     Returns:
-        [type]: [description]
+        DF: Dataset from conversations.
     """
 
     if (Filtro) == False:
@@ -218,17 +232,20 @@ def FiltrarEmisor(DF, Emisor, Filtro):
 
     return DF
 
-
+# Global variable for names array
 NombresNPArray_g = None
 
 
 def LeerNombres():
-    """[summary]
+    """Reads names dataset and stores them in global variable NombresNPArray_g.
+    
+    Data origin: Muestra de Nombres y Apellidos Comunes en Mexico. http://www.datamx.io/dataset/muestra-de-nombres-y-apellidos-comunes-en-mexico 
 
     Returns:
-        [type]: [description]
+        NombresNPArray: Arrray containing common names in Mexico.
     """
 
+    # Reads male names
     NombresHombres = pd.read_csv(
         "../data/raw/external/nombres_personas/hombres.csv", encoding="utf-8"
     )
@@ -243,6 +260,7 @@ def LeerNombres():
     )
     NombresHombres = NombresHombres["Nombre"]
 
+    # Reads female names
     NombresMujeres = pd.read_csv(
         "../data/raw/external/nombres_personas/mujeres.csv", encoding="utf-8"
     )
@@ -257,6 +275,7 @@ def LeerNombres():
     )
     NombresMujeres = NombresMujeres["Nombre"]
 
+    # Concatenates names and stores as array
     Nombres = pd.concat([NombresHombres, NombresMujeres], axis=0)
     Nombres = Nombres.to_list()
     NombresNPArray = np.asarray(Nombres)
@@ -265,14 +284,19 @@ def LeerNombres():
 
 
 def CargarSpacy(use_stanza):
-    """[summary]
+    """Loads language models to be used. It can return both Spacy and Stanza since both can be used.
 
     Returns:
-        [type]: [description]
+        NLP, stanzaNLP: Spacy and Stanza language models.
     """
+
+    # Loads es_core_news_lg from spacy, without ner and parser
     NLP = spacy.load("es_core_news_lg", disable=["ner", "parser"])
+    # Pipe when using spacy (they are both technically the same, but is like this to allow custom options). The other is disabled at runtime.
     NLP.add_pipe("Lematiza_spacy", name="Lematiza_spacy")
+    # Pipe when using stanza (they are both technically the same, but is like this to allow custom options). The other is disabled at runtime.
     NLP.add_pipe("Lematiza_stanza", name="Lematiza_stanza", last=True)
+    # If Stanza will be used, it is loaded, None if not used
     if use_stanza == True:
         stanzaNLP = stanza.Pipeline(
             "es",
@@ -283,6 +307,7 @@ def CargarSpacy(use_stanza):
     else:
         stanzaNLP = None
 
+    # Some preprositions not covered in raw language models
     preposiciones = [
         "a",
         "e",
@@ -313,6 +338,7 @@ def CargarSpacy(use_stanza):
         "o",
     ]
 
+    # Prepositions are added as stop words
     for p in preposiciones:
         NLP.vocab[p].is_stop = True
 
@@ -320,11 +346,12 @@ def CargarSpacy(use_stanza):
 
 
 def CargaSymSpell():
-    """[summary]
+    """Load dictionary for autocorrect process. Since inconsistencies happen when using this, parameters such as max_dictionary_edit_distance and prefix_length are to be modified.
 
     Returns:
-        [type]: [description]
+        sym_spell: dictionary
     """
+
     sym_spell = SymSpell(max_dictionary_edit_distance=2, prefix_length=14)
     dictionary_path = "utils\\dict\\es_full.txt"
     sym_spell.load_dictionary(
@@ -334,7 +361,7 @@ def CargaSymSpell():
 
     return sym_spell
 
-
+# A list of words that are not to be replaced when lemmatizing
 lista_no_reemplaza_g = [
     "hola",
     "gracias",
@@ -403,7 +430,7 @@ lista_no_reemplaza_g = [
     "fe",
 ]
 
-
+# Pipe when using spacy (they are both technically the same, but is like this to allow custom options). The other is disabled at runtime.
 @Language.component("Lematiza_spacy")
 def Lematiza_pipe_spacy(doc):
     HuboPregunta = False
@@ -431,7 +458,7 @@ def Lematiza_pipe_spacy(doc):
 
     return doc, HuboPregunta
 
-
+# Pipe when using stanza (they are both technically the same, but is like this to allow custom options). The other is disabled at runtime.
 @Language.component("Lematiza_stanza")
 def Lematiza_pipe_stanza(doc):
     HuboPregunta = False
@@ -461,11 +488,13 @@ def Lematiza_pipe_stanza(doc):
 
 
 def ReemplazaToken(Token, NombresNPArray, stanza_flag, lista_no_reemplaza):
-    """[summary]
+    """Function to replace words if they match a specific pattern, and then flagged accordingly.
 
     Args:
-        Token ([type]): [description]
-        NombresNPArray ([type]): [description]
+        Token (str): spacy token
+        NombresNPArray (array): array of common names in Mexico. See LeerNombres().
+        stanza_flag (bool): If stanza is used (value = 1), we look for the text member, not the lemma. If not used (value = 0), lemma is looked after.
+        lista_no_reemplaza (list): contains words not to be replaced.
 
     Returns:
         [type]: [description]
@@ -475,32 +504,45 @@ def ReemplazaToken(Token, NombresNPArray, stanza_flag, lista_no_reemplaza):
     PatronMatricula = "([A|a][0-9]{5,8})"
     PatronNomina = "([L|l][0-9]{5,8})"
 
+    # Matricula
     if bool(re.search(PatronMatricula, str(Token.lemma_))):
         Temporal = "zzzmatricula"
+    # Negation
     elif str(Token.lemma).lower() == "no":
         Temporal = "zzzneg"
+    # If not replaced
     elif (lista_no_reemplaza != None) and (str(Token.text) in lista_no_reemplaza):
         Temporal = Token.text
+    # Some word-specific standardization (mty > monterrey)
     elif str(Token.lemma).lower() == "mty":
         Temporal = "monterrey"
+    # Some word-specific standardization (gdl > guadalajara)
     elif str(Token.lemma).lower() == "gdl":
         Temporal = "guadalajara"
+    # Some word-specific standardization (mex > mexico)
     elif str(Token.lemma).lower() == "mex":
         Temporal = "mexico"
+    # Some word-specific standardization (prepa > preparatoria)
     elif str(Token.text).lower() == "prepa":
         Temporal = "preparatoria"
+    # Some word-specific standardization (secu > secundaria)
     elif str(Token.text).lower() == "secu":
         Temporal = "secundaria"
+    # Nomina
     elif bool(re.search(PatronNomina, str(Token.lemma_))):
         Temporal = "zzznomina"
+    # Email
     elif Token.like_email:
         Temporal = "zzzemail"
+    # URL
     elif Token.like_url:
         Temporal = "zzzurl"
+    # Number
     elif (Token.pos_ == "NUM" or Token.like_num) or (
         re.search(r"(^\d+$)", str(Token.lemma_))
     ):
         Temporal = "zzznumero"
+    # Is a common name
     elif (
         str(Token.text)
         in NombresNPArray[
@@ -508,11 +550,14 @@ def ReemplazaToken(Token, NombresNPArray, stanza_flag, lista_no_reemplaza):
         ]
     ):  # (token.text in nombres):
         Temporal = "zzznombre"
+    # Is not to be replaced by flag, meaning will be lemmatized (if not already by stanza)
     else:
+        # Checks if stanza will be used for lemmatization (such case value = 1). Value = 0 to lemmatize with spacy.
         if stanza_flag == 0:
             Temporal = str(Token.lemma_)
         else:
             Temporal = str(Token.text)
+        # word normalization
         Temporal = Temporal.lower()
         Temporal_NFKD = unicodedata.normalize("NFKD", Temporal)
         Temporal = "".join([c for c in Temporal_NFKD if not unicodedata.combining(c)])
@@ -523,7 +568,7 @@ def ReemplazaToken(Token, NombresNPArray, stanza_flag, lista_no_reemplaza):
 
     return Temporal
 
-
+# For successful stanza handling, docs are read in chunks
 def chunks(lst, n):
     """Yield successive n-sized chunks from lst."""
     for i in range(0, len(lst), n):
@@ -531,24 +576,31 @@ def chunks(lst, n):
 
 
 def TokenizaYLematiza(DF, NombresNPArray, NLP, stanzaNLP, AutoCorrect, sym_spell):
-    """[summary]
+    """Core process for lemmatization
 
     Args:
-        DF ([type]): [description]
-        NombresNPArray ([type]): [description]
-        NLP ([type]): [description]
+        DF (dataset): Dataset from conversations.
+        NombresNPArray (array): Arrray containing common names in Mexico.
+        NLP (object): spacy language model.
+        stanzaNLP (object): stanza language model.
+        AutoCorrect (bool): states if autocorrect is going to be applied.
+        sym_spell (object): dictionary for autocorrect.
 
     Returns:
-        [type]: [description]
+        DF: Dataset from conversations.
     """
     DFLength = len(DF)
 
+    # Checks if autocorrection will be done
     if AutoCorrect == True:
+        # Start reading dictionary values from 5th element and on
         dict_list = list(islice(sym_spell.words.items(), 5))
+        # Verifies if dict_list is loaded correctly
         if len(dict_list) > 0:
             print("Diccionario cargado exitosamente!")
         else:
             print("ERROR AL CARGAR EL DICCIONARIO, INTERRUMPE EL KERNEL INMEDIATAMENTE")
+        # Start performing autocorrection
         with tqdm(
             total=DFLength,
             bar_format="{bar}|{desc}{percentage:3.0f}% {r_bar}",
@@ -556,10 +608,13 @@ def TokenizaYLematiza(DF, NombresNPArray, NLP, stanzaNLP, AutoCorrect, sym_spell
         ) as pbar3:
             pbar3.set_description(f"Corrigiendo errores...")
             CuerpoCorrectoList = []
+            # n^2 process where each word from each line is read
             for row in DF.itertuples():
                 OracionCorrecta = []
                 for item in str(row.Cuerpo).split(" "):
+                    # Create an ignore regex from words that are not to be replaced
                     regex_pattern = "(" + "|".join(lista_no_reemplaza_g) + ")"
+                    # Gather word suggestions
                     suggestions = sym_spell.lookup(
                         item,
                         Verbosity.CLOSEST,
@@ -567,10 +622,14 @@ def TokenizaYLematiza(DF, NombresNPArray, NLP, stanzaNLP, AutoCorrect, sym_spell
                         include_unknown=True,
                         ignore_token=regex_pattern,
                     )
+                    # Select first suggestion
                     suggestion = str(suggestions[0]).split(",")[0]
+                    # Add word to sentence
                     OracionCorrecta.append(suggestion)
+                # Add sentence to body
                 CuerpoCorrectoList.append(" ".join(OracionCorrecta))
                 pbar3.update(1)
+            # String normalization
             DF["CuerpoCorregido"] = CuerpoCorrectoList
             DF["CuerpoCorregido"] = DF["CuerpoCorregido"].str.lower()
             DF["CuerpoCorregido"] = (
@@ -583,25 +642,29 @@ def TokenizaYLematiza(DF, NombresNPArray, NLP, stanzaNLP, AutoCorrect, sym_spell
 
     DFLength = len(DF)
 
+    # Load names if not already loaded
     global NombresNPArray_g
     if NombresNPArray_g == None:
         NombresNPArray_g = NombresNPArray
 
+    # Preprocessing stage
     with tqdm(
         total=3, bar_format="{bar}|{desc}{percentage:3.0f}% {r_bar}", leave=False
     ) as pbar2:
         pbar2.set_description(f"Preprocesando Logs...")
         OracionLematizadaList = []
         HuboPreguntaList = []
-        # for i, Row in enumerate(DF.itertuples(), 1):
+        # Column changes if autocorrect is done
         if AutoCorrect == True:
             idx = "CuerpoCorregido"
         else:
             idx = "Cuerpo"
 
+        # Normalize empty cases
         DF[idx] = [re.sub(" +", " ", str(x)) for x in DF[idx]]
         DF[idx] = [re.sub("\n+", " ", str(x)) for x in DF[idx]]
 
+        # If stanza is not used
         if stanzaNLP == None:
             for doc, hubo_pregunta in NLP.pipe(
                 iter(DF[idx]), disable=["Lematiza_stanza"]
@@ -609,10 +672,12 @@ def TokenizaYLematiza(DF, NombresNPArray, NLP, stanzaNLP, AutoCorrect, sym_spell
                 OracionLematizadaList.append(doc)
                 HuboPreguntaList.append(hubo_pregunta)
                 pbar2.update(1)
+        # Stanza is used. This code is more complete as is the main procedure for thesis.
         else:
             list_doc_text = []
             pbar2.set_description(f"Tokenizando...")
 
+            # Runs the pipe and states for empty cases as zzzignore
             for Doc, HuboPregunta in NLP.pipe(
                 iter(DF[idx]), disable=["tagger", "ner", "parser", "Lematiza_spacy"]
             ):
@@ -623,30 +688,40 @@ def TokenizaYLematiza(DF, NombresNPArray, NLP, stanzaNLP, AutoCorrect, sym_spell
                     list_doc_text.append("zzzignore" + "\n\n")
                 HuboPreguntaList.append(HuboPregunta)
 
+            # Chunk size is 500
             n = 500
+            # List of batches
             doc_batches = list(chunks(list_doc_text, n))
 
             list_sentences = []
             pbar2.set_description(f"Stanza NLP...")
+            # Stanza process
             with tqdm(
                 total=len(list_doc_text),
                 bar_format="{bar}|{desc}{percentage:3.0f}% {r_bar}",
                 leave=False,
             ) as pbar3:
+                # Read each batch
                 for batch in doc_batches:
                     pbar3.set_description(f"Stanza batches...")
+                    # Read each sentence in the batch
                     for sent in stanzaNLP(batch).sentences:
                         list_doc = []
+                        # Read each word in the sentence
                         for word in sent.words:
+                            # If not stop word
                             if not NLP.vocab[word.text].is_stop:
+                                # If is not to be replaced word
                                 if (str(word.text)) in lista_no_reemplaza_g:
                                     list_doc.append(word.text)
                                 else:
+                                    # If flagged with 'zzz'
                                     if "zzz" in word.text:
                                         temporal_token = (
                                             "zzz" + word.text[3:].upper() + "zzz"
                                         )
                                         list_doc.append(temporal_token)
+                                    # Lemmatize word
                                     else:
                                         list_doc.append(word.lemma)
                         if len(list_doc) > 0:
@@ -656,6 +731,7 @@ def TokenizaYLematiza(DF, NombresNPArray, NLP, stanzaNLP, AutoCorrect, sym_spell
                         pbar3.update(1)
             OracionLematizadaList = list_sentences
 
+        # Result is stored in OracionLematizada
         DF["OracionLematizada"] = OracionLematizadaList
         DF["HuboPregunta"] = HuboPreguntaList
 
