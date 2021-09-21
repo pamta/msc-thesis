@@ -221,15 +221,11 @@ def FiltrarEmisor(DF, Emisor, Filtro):
         DF: Dataset from conversations.
     """
 
-    if (Filtro) == False:
-        DF = DF
-    elif (Filtro == True) and Emisor == "AGENTE":
-        DF = DF[DF["Emisor"] == "AGENTE"]
-    elif (Filtro == True) and Emisor == "PROSPECTO":
-        DF = DF[DF["Emisor"] == "PROSPECTO"]
-    else:
-        DF = DF[DF["Emisor"] == "TECBOT"]
-
+    if Filtro:
+        if Emisor in ["AGENTE", "PROSPECTO"]:
+            DF = DF[DF["Emisor"] == Emisor]
+        else:
+            DF = DF[DF["Emisor"] == "TECBOT"]
     return DF
 
 # Global variable for names array
