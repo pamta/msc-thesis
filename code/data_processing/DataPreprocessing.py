@@ -100,7 +100,7 @@ def HacerPreproceso(
 
         # 3) Read Names Dataset
         pbar.set_description(f"Leyendo Nombres...")
-        NombresNPArray = LeerNombres()
+        NombresNPArray = LeerNombresTemp()
         time.sleep(1)
         pbar.write(f"Done: Leyendo Nombres.")
         time.sleep(1)
@@ -216,6 +216,8 @@ def FiltrarEmisor(DF, Emisor, Filtro):
 # Global variable for names array
 NombresNPArray_g = None
 
+def LeerNombresTemp():
+    return np.array(["Ana", "Pedro"])
 
 def LeerNombres():
     """Reads names dataset and stores them in global variable NombresNPArray_g.
