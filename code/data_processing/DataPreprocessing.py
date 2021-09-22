@@ -181,34 +181,19 @@ def HacerPreproceso(
     return DF, NLP, stanzaNLP, sym_spell
 
 
-def LeerLogs(Departamento, Juntar, SegundosDelta):
-    """Reads file that
+def LeerLogs(full_file_name):
+    """Returns a DF of the specified file
 
     Args:
-        Departamento (str): For filename reading. Options: TODOS, Admision_Preparatoria, Admision_Profesional, SOAE, SOAD
-        SegundosDelta (int): Time frame to merge multi-lines.
-
-    Returns:
-        DF: Dataset from conversations.
+        full_file_name: file name with the path to read from and extension
     """
-
-    # Checks if file to be read contains a format following merged multi-lines or not.
-    if Juntar == True:
-        DF = pd.read_csv(
-            f"../data/processed/internal/admisiones/chat_reports/logs/logs_{str(Departamento).capitalize()}_sec_{SegundosDelta}.csv",
-            encoding="utf-8",
-            keep_default_na=False,
-            na_values=["", " "],
-        )
-    else:
-        DF = pd.read_csv(
-            f"../data/processed/internal/admisiones/chat_reports/logs/logs_{str(Departamento).capitalize()}_sec_No.csv",
-            encoding="utf-8",
-            keep_default_na=False,
-            na_values=["", " "],
+    DF = pd.read_csv(
+        full_file_name,
+        encoding="utf-8",
+        keep_default_na=False,
+        na_values=["", " "],
         )
     return DF
-
 
 def FiltrarEmisor(DF, Emisor, Filtro):
     """Filter the dataset by Emisor.
