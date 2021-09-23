@@ -16,7 +16,6 @@ import numexpr as ne
 import numpy as np 
 import pandas as pd  
 import string  
-import time
 from tqdm import tqdm  # Progress bar
 import unicodedata
 
@@ -86,25 +85,19 @@ def HacerPreproceso(
         # 1) Read Logs
         pbar.set_description(f"Leyendo Logs...")
         DF = LeerLogs('./data/{}.csv'.format(file_name))
-        time.sleep(1)
         pbar.write(f"Done: Leyendo Logs.")
-        time.sleep(1)
         pbar.update(1)
 
         # 2) Filter Logs
         pbar.set_description(f"Filtrando Logs...")
         DF = FiltrarEmisor(DF, Emisor, Filtro)
-        time.sleep(1)
         pbar.write(f"Done: Filtrando Logs.")
-        time.sleep(1)
         pbar.update(1)
 
         # 3) Read Names Dataset
         pbar.set_description(f"Leyendo Nombres...")
         NombresNPArray = LeerNombresTemp()
-        time.sleep(1)
         pbar.write(f"Done: Leyendo Nombres.")
-        time.sleep(1)
         pbar.update(1)
 
         # Loads if Language Models are not loaded
@@ -112,15 +105,11 @@ def HacerPreproceso(
             # 4.1) Initialize Spacy/Stanza
             pbar.set_description(f"Inicializando Spacy...")
             NLP, stanzaNLP = CargarSpacy(use_stanza)
-            time.sleep(1)
             pbar.write(f"Done: Inicializando Spacy.")
-            time.sleep(1)
             pbar.update(1)
         else:
             # 4.2) Language model is already initialized
-            time.sleep(1)
             pbar.write(f"Done: Spacy ya se encuentra inicializado.")
-            time.sleep(1)
             pbar.update(1)
 
         # Check if autocorrection is going to be done
@@ -130,9 +119,7 @@ def HacerPreproceso(
                 # 5) Initialize Dictionary
                 pbar.set_description(f"Inicializando Diccionario...")
                 sym_spell = CargaSymSpell()
-                time.sleep(1)
                 pbar.write(f"Done: Inicializando Diccionario.")
-                time.sleep(1)
                 pbar.update(1)
 
         # 5|6) Lemmatize
@@ -140,9 +127,7 @@ def HacerPreproceso(
         DF = TokenizaYLematiza(
             DF, NombresNPArray, NLP, stanzaNLP, AutoCorrect, sym_spell
         )
-        time.sleep(1)
         pbar.write(f"Done: Lematizando.")
-        time.sleep(1)
         pbar.update(1)
 
         # Column is normalized
@@ -174,9 +159,7 @@ def HacerPreproceso(
                 encoding="utf-8",
                 index=False,
             )
-        time.sleep(1)
         pbar.write(f"Done: Escribiendo Logs Preprocesados.")
-        time.sleep(1)
         pbar.update(1)
 
     return DF, NLP, stanzaNLP, sym_spell
