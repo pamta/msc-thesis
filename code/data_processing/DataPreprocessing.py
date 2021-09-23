@@ -44,6 +44,7 @@ ne.set_vml_num_threads(8)
 def HacerPreproceso(
     Departamento="TODOS",
     Emisor="AGENTE", 
+    file_name = "tbfMensajes",
     Filtro=True, 
     Juntar=False, 
     SegundosDelta=0, 
@@ -84,7 +85,7 @@ def HacerPreproceso(
 
         # 1) Read Logs
         pbar.set_description(f"Leyendo Logs...")
-        DF = LeerLogs(Departamento, Juntar, SegundosDelta)
+        DF = LeerLogs('./data/{}.csv'.format(file_name))
         time.sleep(1)
         pbar.write(f"Done: Leyendo Logs.")
         time.sleep(1)
@@ -157,8 +158,8 @@ def HacerPreproceso(
         # Checks if conversations are merged to indicate in filename
         if Juntar == True:
             DF.to_csv(
-                "../data/processed/internal/admisiones/chat_reports/clean_logs/logs_"
-                + str(Departamento).capitalize()
+                "./data/processed/internal/admisiones/chat_reports/clean_logs/logs_"
+                + (Departamento + "_" + file_name).capitalize()
                 + "_sec_"
                 + str(SegundosDelta)
                 + ".csv",
@@ -167,8 +168,8 @@ def HacerPreproceso(
             )
         else:
             DF.to_csv(
-                "../data/processed/internal/admisiones/chat_reports/clean_logs/logs_"
-                + str(Departamento).capitalize()
+                "./data/processed/internal/admisiones/chat_reports/clean_logs/logs_"
+                + (Departamento + "_" + file_name).capitalize()
                 + "_sec_No.csv",
                 encoding="utf-8",
                 index=False,
@@ -208,9 +209,9 @@ def FiltrarEmisor(DF, Emisor, Filtro):
 
     if Filtro:
         if Emisor in ["AGENTE", "PROSPECTO"]:
-            DF = DF[DF["Emisor"] == Emisor]
+            DF = DF[DF["emisor"] == Emisor]
         else:
-            DF = DF[DF["Emisor"] == "TECBOT"]
+            DF = DF[DF["emisor"] == "TECBOT"]
     return DF
 
 # Global variable for names array
@@ -722,3 +723,5 @@ def TokenizaYLematiza(DF, NombresNPArray, NLP, stanzaNLP, AutoCorrect, sym_spell
 
     pbar2.close()
     return DF
+
+HacerPreproceso()
