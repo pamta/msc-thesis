@@ -27,6 +27,7 @@ from spacy.language import Language
 import stanza
 from symspellpy import SymSpell, Verbosity, editdistance
 
+STANZA_PATH = './data/stanza'
 ne.set_vml_num_threads(8)
 
 # Pandas options to display whole information of dataframes
@@ -252,7 +253,6 @@ def LeerNombres():
 
 def CargarSpacy(use_stanza):
     """Loads language models to be used. It can return both Spacy and Stanza since both can be used.
-
     Returns:
         NLP, stanzaNLP: Spacy and Stanza language models.
     """
@@ -265,8 +265,10 @@ def CargarSpacy(use_stanza):
     NLP.add_pipe("Lematiza_stanza", name="Lematiza_stanza", last=True)
     # If Stanza will be used, it is loaded, None if not used
     if use_stanza == True:
+        #stanza.download('es', model_dir=STANZA_PATH)
         stanzaNLP = stanza.Pipeline(
             "es",
+            dir=STANZA_PATH,
             processors="tokenize,mwt,pos,lemma",
             tokenize_no_ssplit=True,
             verbose=False,
@@ -707,4 +709,4 @@ def TokenizaYLematiza(DF, NombresNPArray, NLP, stanzaNLP, AutoCorrect, sym_spell
     pbar2.close()
     return DF
 
-HacerPreproceso()
+HacerPreproceso(Filtro=False)
