@@ -26,6 +26,7 @@ import spacy
 from spacy.language import Language
 import stanza
 from symspellpy import SymSpell, Verbosity, editdistance
+from tqdm.std import EMA
 
 STANZA_PATH = './data/stanza'
 ne.set_vml_num_threads(8)
@@ -191,11 +192,8 @@ def FiltrarEmisor(DF, Emisor, Filtro):
         DF: Dataset from conversations.
     """
 
-    if Filtro:
-        if Emisor in ["AGENTE", "PROSPECTO"]:
-            DF = DF[DF["emisor"] == Emisor]
-        else:
-            DF = DF[DF["emisor"] == "TECBOT"]
+    if Filtro and Emisor in ['bot', 'usuario']:
+        DF = DF[DF["emisor"] == Emisor]
     return DF
 
 # Global variable for names array
@@ -712,4 +710,4 @@ def TokenizaYLematiza(DF, NombresNPArray, NLP, stanzaNLP, AutoCorrect, sym_spell
     pbar2.close()
     return DF
 
-HacerPreproceso(Filtro=False)
+HacerPreproceso(Emisor='usuario')
