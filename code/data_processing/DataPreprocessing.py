@@ -85,7 +85,7 @@ def HacerPreproceso(
 
         # 1) Read Logs
         pbar.set_description(f"Leyendo Logs...")
-        DF = LeerLogs('./data/{}.csv'.format(file_name))
+        DF = LeerLogs('./data/{}.csv'.format(file_name)).dropna(subset=['ResponseText'], inplace=False)
         pbar.write(f"Done: Leyendo Logs.")
         pbar.update(1)
 
