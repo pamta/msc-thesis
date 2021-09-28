@@ -627,11 +627,14 @@ def TokenizaYLematiza(DF, NombresNPArray, NLP, stanzaNLP, AutoCorrect, sym_spell
         if AutoCorrect == True:
             idx = "CuerpoCorregido"
         else:
-            idx = "Cuerpo"
+            idx = "ResponseText"
 
         # Normalize empty cases
-        DF[idx] = [re.sub(" +", " ", str(x)) for x in DF[idx]]
-        DF[idx] = [re.sub("\n+", " ", str(x)) for x in DF[idx]]
+        for x in DF[idx]:
+            if x != 'nan':
+                x = re.sub(" +", " ", str(x))
+                DF[idx] = re.sub("\n+", " ", str(x))
+
 
         # If stanza is not used
         if stanzaNLP == None:
